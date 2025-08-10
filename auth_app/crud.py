@@ -4,15 +4,12 @@ from common import models
 from . import schemas
 from passlib.context import CryptContext
 
-# Konfiguracja hashowania haseł
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def get_user_by_email(db: Session, email: str):
-    """Sprawdza, czy użytkownik o danym emailu już istnieje."""
     return db.query(models.User).filter(models.User.email == email).first()
 
 def create_user(db: Session, user: schemas.UserCreate):
-    """Tworzy nowego użytkownika w bazie danych."""
     hashed_password = pwd_context.hash(user.password)
     db_user = models.User(email=user.email, hashed_password=hashed_password)
     db.add(db_user)
