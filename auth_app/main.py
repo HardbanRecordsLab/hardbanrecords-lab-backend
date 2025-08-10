@@ -1,5 +1,5 @@
 # auth_app/main.py
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from common import models
@@ -9,7 +9,10 @@ from . import crud, schemas
 # Tworzy tabele w bazie danych (jeśli nie istnieją)
 models.Base.metadata.create_all(bind=engine)
 
+# --- POCZĄTEK ZMIAN ---
+
 app = FastAPI()
+router = APIRouter() # Tworzymy obiekt routera
 
 # Funkcja do zarządzania sesjami bazy danych
 def get_db():
@@ -19,7 +22,8 @@ def get_db():
     finally:
         db.close()
 
-@app.post("/register/", response_model=schemas.UserOut)
+# Zmieniamy @app.post na @router.post i usuwamy ukośnik na końcu
+@router.post("/register", response_model=schemas.UserOut)
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     """
     Endpoint do rejestracji nowego użytkownika.
@@ -31,7 +35,12 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     created_user = crud.create_user(db=db, user=user)
     return created_user
 
-
-@app.get("/")
+# Zmieniamy @app.get na @router.get
+@router.get("/")
 def read_root():
     return {"message": "Auth Service is running!"}
+
+# Na końcu mówimy głównej aplikacji, aby używała naszego routera
+app.include_router(router)
+
+# --- KONIEC ZMIAN ---
