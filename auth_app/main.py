@@ -1,4 +1,9 @@
 # auth_app/main.py
+import sys
+import os
+
+# Dodaj główny folder projektu do ścieżki Pythona
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fastapi import FastAPI, APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
