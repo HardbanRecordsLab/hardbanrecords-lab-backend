@@ -1,16 +1,4 @@
 # auth_app/main.py
-# --- KOD DIAGNOSTYCZNY (do usunięcia później) ---
-import sys
-import os
-
-print("--- START DIAGNOSTYCZNY ---")
-print(f"Bieżący katalog roboczy (CWD): {os.getcwd()}")
-print("Ścieżka systemowa Pythona (sys.path):")
-for p in sys.path:
-    print(f"- {p}")
-print("--- KONIEC DIAGNOSTYCZNY ---")
-# --- KONIEC KODU DIAGNOSTYCZNEGO ---
-
 
 # Tutaj zaczynają się Twoje normalne importy
 from fastapi import FastAPI, APIRouter, Depends, HTTPException
