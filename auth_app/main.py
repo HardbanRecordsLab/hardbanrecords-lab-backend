@@ -1,9 +1,4 @@
 # auth_app/main.py
-import sys
-import os
-
-# Dodaj główny folder projektu do ścieżki Pythona
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fastapi import FastAPI, APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -28,7 +23,6 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = crud.get_user_by_email(db, email=user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
-    
     created_user = crud.create_user(db=db, user=user)
     return created_user
 
