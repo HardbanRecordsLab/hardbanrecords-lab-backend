@@ -1,3 +1,4 @@
+from common.database import Base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
@@ -26,3 +27,4 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Tworzymy klasę bazową dla naszych modeli danych
 # Każdy model, który stworzymy (np. User), będzie dziedziczył z tej klasy
 Base = declarative_base()
+Base = Base  # eksportuj Base, by był widoczny jako atrybut modułu
