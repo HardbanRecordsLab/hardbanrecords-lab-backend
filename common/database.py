@@ -2,19 +2,18 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-# Dodajemy SettingsConfigDict - to jest kluczowa zmiana
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # Pole, które już mieliśmy
     sqlalchemy_database_url: str
     
-    # Dodajemy pola, których oczekujemy z pliku .env
+    # Dodajemy pola, których aplikacja oczekuje z pliku .env
     secret_key: str
     algorithm: str
     access_token_expire_minutes: int
 
-    # TA NOWA SEKCJA MÓWI APLIKACJI, ŻEBY CZYTAŁA Z PLIKU .ENV
+    # Ta linijka mówi Pydantic, żeby wczytał dane z pliku .env
     model_config = SettingsConfigDict(env_file=".env")
 
 # Tworzymy instancję naszych ustawień
