@@ -2,25 +2,24 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from pydantic_settings import BaseSettings, SettingsConfigDict # Dodajemy SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    """
-    Klasa do zarządzania zmiennymi środowiskowymi.
-    """
-    sqlalchemy_database_url: str 
+    # Pole, które już mieliśmy
+    sqlalchemy_database_url: str
+    
+    # Dodajemy pola, których oczekujemy z pliku .env
+    secret_key: str
+    algorithm: str
+    access_token_expire_minutes: int
 
-    # Ta nowa sekcja mówi Pydantic, żeby szukał pliku .env
+    # Ta linijka mówi Pydantic, żeby wczytał dane z pliku .env
     model_config = SettingsConfigDict(env_file=".env")
 
 # Tworzymy instancję naszych ustawień
 settings = Settings()
 
-# Tworzymy "silnik" bazy danych, używając adresu URL z naszej konfiguracji
+# Reszta pliku bez zmian
 engine = create_engine(settings.sqlalchemy_database_url)
-
-# Tworzymy "fabrykę" sesji
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Tworzymy klasę bazową dla naszych modeli
 Base = declarative_base()
