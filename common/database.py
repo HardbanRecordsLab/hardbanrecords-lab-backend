@@ -1,35 +1,31 @@
 # common/database.py
+import os
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.orm import sessionmaker
+from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    """
-    Klasa do wczytywania wszystkich zmiennych środowiskowych z pliku .env.
-    """
-    # Pole do połączenia z bazą danych
-    sqlalchemy_database_url: str
-    groq_api_key: str = ""  # Dodaj to pole, jeśli masz taki klucz w .env
-
-    class Config:
-        extra = "ignore"  # Pozwala ignorować nieznane zmienne środowiskowe
-
+    database_url: str = "sqlite:///./hardban.db"
+    secret_key: str = "your-secret-key-change-in-production"
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+    groq_api_key: str = "gsk_default"  # DODANE: definicja pola
     
-    # DODAJEMY TE TRZY POLA, aby aplikacja wiedziała, czego szukać w .env
-    secret_key: str
-    algorithm: str
-    access_token_expire_minutes: int
+    class Config:  # POPRAWIONE: tylko Config, bez model_config
+        env_file = ".env"
 
-    # Ta linijka mówi Pydantic, żeby wczytał dane z pliku .env
-    model_config = SettingsConfigDict(env_file=".env")
-
-# Tworzymy jedną, globalną instancję naszych ustawień
 settings = Settings()
 
-# Używamy wczytanych ustawień do stworzenia silnika bazy danych
-engine = create_engine(settings.sqlalchemy_database_url)
+# Database setup
+SQLALCHEMY_DATABASE_URL = settings.database_url
 
-# Reszta pliku bez zmian
+if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+    )
+else:
+    engine = create_engine(SQLALCHEMY_DATABASE_URL)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
