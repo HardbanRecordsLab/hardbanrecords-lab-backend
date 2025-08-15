@@ -1,9 +1,9 @@
-# common/database.py
+# common/database.py - Pydantic v2 syntax
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str = "sqlite:///./hardban.db"
@@ -12,8 +12,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     groq_api_key: str = "gsk_default"  # DODANE: definicja pola
     
-    class Config:  # POPRAWIONE: tylko Config, bez model_config
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
 
