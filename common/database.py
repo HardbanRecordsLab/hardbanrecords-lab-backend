@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     """
     # Pole do połączenia z bazą danych
     sqlalchemy_database_url: str
+    groq_api_key: str = ""  # Dodaj to pole, jeśli masz taki klucz w .env
+
+    class Config:
+        extra = "ignore"  # Pozwala ignorować nieznane zmienne środowiskowe
+
     
     # DODAJEMY TE TRZY POLA, aby aplikacja wiedziała, czego szukać w .env
     secret_key: str
