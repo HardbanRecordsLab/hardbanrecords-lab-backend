@@ -1,51 +1,146 @@
-# auth_app/main.py
-
-# Krok 1: Importujemy wszystkie potrzebne narzędzia
-from fastapi import FastAPI, APIRouter, Depends, HTTPException
+# music_app/main.py
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from typing import List
 
-# Krok 2: Importujemy nasze własne moduły
 from common import models
-# WAŻNA ZMIANA: Importujemy 'Base' bezpośrednio z pliku database
-from common.database import SessionLocal, engine, Base 
+from common.database import SessionLocal, engine, Base
+from auth_app.crud import get_current_user, get_db
 from . import crud, schemas
 
-# Krok 3: Komenda tworząca tabele w bazie danych.
-# Teraz używamy poprawnie zaimportowanego 'Base'.
+# Tworzymy tabele w bazie danych
 Base.metadata.create_all(bind=engine)
 
-# Krok 4: Inicjalizacja aplikacji i routera
-app = FastAPI()
-router = APIRouter()
+app = FastAPI(
+    title="HardbanRecords Music Service",
+    description="Music release management for independent artists",
+    version="1.0.0"
+)
 
-# Krok 5: Funkcja pomocnicza do zarządzania sesjami bazy danych
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+router = APIRouter(prefix="/music", tags=["Music Releases"])
 
-# Krok 6: Definicja endpointu do rejestracji
-@router.post("/register", response_model=schemas.UserOut, tags=["Authentication"])
-def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+@router.get("/", response_model=List[schemas.MusicRelease])
+def get_my_releases(
+    skip: int = 0, 
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
     """
-    Rejestruje nowego użytkownika w systemie.
+    Pobiera listę wszystkich wydań muzycznych zalogowanego użytkownika.
     """
-    db_user = crud.get_user_by_email(db, email=user.email)
-    if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
+    releases = crud.get_music_releases_by_owner(db, current_user.id, skip, limit)
+    return releases
+
+@router.post("/", response_model=schemas.MusicRelease, status_code=status.HTTP_201_CREATED)
+def create_release(
+    release: schemas.MusicReleaseCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Tworzy nowe wydanie muzyczne dla zalogowanego użytkownika.
+    """
+    # Sprawdź czy użytkownik ma uprawnienia do tworzenia muzyki
+    if current_user.role not in ["music_creator", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only music creators can create releases"
+        )
     
-    created_user = crud.create_user(db=db, user=user)
-    return created_user
+    return crud.create_music_release(db, release, current_user.id)
 
-# Krok 7: Definicja głównego endpointu do sprawdzania, czy serwis działa
-@router.get("/", tags=["Status"])
-def read_root():
+@router.get("/{release_id}", response_model=schemas.MusicRelease)
+def get_release(
+    release_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
     """
-    Zwraca informację, że serwis jest uruchomiony.
+    Pobiera szczegóły konkretnego wydania muzycznego.
+    Użytkownik może zobaczyć tylko swoje wydania.
     """
-    return {"message": "Auth Service is running!"}
+    release = db.query(models.MusicRelease).filter(
+        models.MusicRelease.id == release_id,
+        models.MusicRelease.owner_id == current_user.id
+    ).first()
+    
+    if not release:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Release not found or access denied"
+        )
+    return release
 
-# Krok 8: Podłączenie naszego routera do głównej aplikacji
+@router.put("/{release_id}", response_model=schemas.MusicRelease)
+def update_release(
+    release_id: int,
+    release_update: schemas.MusicReleaseCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Aktualizuje istniejące wydanie muzyczne.
+    """
+    # Sprawdź czy wydanie istnieje i należy do użytkownika
+    db_release = db.query(models.MusicRelease).filter(
+        models.MusicRelease.id == release_id,
+        models.MusicRelease.owner_id == current_user.id
+    ).first()
+    
+    if not db_release:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Release not found"
+        )
+    
+    # Aktualizuj pola
+    for field, value in release_update.model_dump(exclude_unset=True).items():
+        setattr(db_release, field, value)
+    
+    db.commit()
+    db.refresh(db_release)
+    return db_release
+
+@router.delete("/{release_id}")
+def delete_release(
+    release_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Usuwa wydanie muzyczne.
+    """
+    release = db.query(models.MusicRelease).filter(
+        models.MusicRelease.id == release_id,
+        models.MusicRelease.owner_id == current_user.id
+    ).first()
+    
+    if not release:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Release not found"
+        )
+    
+    db.delete(release)
+    db.commit()
+    return {"message": "Release deleted successfully"}
+
+@router.get("/health")
+def health_check():
+    """
+    Sprawdza czy serwis muzyczny działa poprawnie.
+    """
+    return {"status": "Music Service is running!", "service": "music_app"}
+
+# Dodaj router do głównej aplikacji
 app.include_router(router)
+
+# Endpoint główny dla serwisu
+@app.get("/")
+def read_root():
+    return {
+        "message": "HardbanRecords Music Service", 
+        "version": "1.0.0",
+        "docs": "/docs"
+    }
