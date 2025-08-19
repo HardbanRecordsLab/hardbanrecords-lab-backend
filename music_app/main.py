@@ -1,146 +1,159 @@
-# music_app/main.py
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, status
+# music_app/main.py - KOMPLETNY SERWIS MUZYCZNY
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
+import shutil
+import os
+from pathlib import Path
 
+from common.database import SessionLocal
 from common import models
-from common.database import SessionLocal, engine, Base
-from auth_app.crud import get_current_user, get_db
+from auth_app.crud import get_current_user
 from . import crud, schemas
 
-# Tworzymy tabele w bazie danych
-Base.metadata.create_all(bind=engine)
+router = APIRouter()
 
-app = FastAPI(
-    title="HardbanRecords Music Service",
-    description="Music release management for independent artists",
-    version="1.0.0"
-)
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-router = APIRouter(prefix="/music", tags=["Music Releases"])
+# Folder na pliki audio (tymczasowy - później S3)
+UPLOAD_DIR = Path("uploads/audio")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-@router.get("/", response_model=List[schemas.MusicRelease])
+@router.get("/releases/", response_model=List[schemas.MusicRelease])
 def get_my_releases(
-    skip: int = 0, 
+    skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    """
-    Pobiera listę wszystkich wydań muzycznych zalogowanego użytkownika.
-    """
+    """Pobiera wszystkie wydania muzyczne aktualnego użytkownika."""
     releases = crud.get_music_releases_by_owner(db, current_user.id, skip, limit)
     return releases
 
-@router.post("/", response_model=schemas.MusicRelease, status_code=status.HTTP_201_CREATED)
+@router.post("/releases/", response_model=schemas.MusicRelease)
 def create_release(
-    release: schemas.MusicReleaseCreate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    title: str = Form(...),
+    artist: str = Form(...),
+    genre: str = Form(default="Electronic"),
+    audio_file: UploadFile = File(...),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    """
-    Tworzy nowe wydanie muzyczne dla zalogowanego użytkownika.
-    """
-    # Sprawdź czy użytkownik ma uprawnienia do tworzenia muzyki
-    if current_user.role not in ["music_creator", "admin"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only music creators can create releases"
-        )
+    """Tworzy nowe wydanie muzyczne z plikiem audio."""
     
-    return crud.create_music_release(db, release, current_user.id)
-
-@router.get("/{release_id}", response_model=schemas.MusicRelease)
-def get_release(
-    release_id: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    """
-    Pobiera szczegóły konkretnego wydania muzycznego.
-    Użytkownik może zobaczyć tylko swoje wydania.
-    """
-    release = db.query(models.MusicRelease).filter(
-        models.MusicRelease.id == release_id,
-        models.MusicRelease.owner_id == current_user.id
-    ).first()
+    # Walidacja pliku audio
+    if not audio_file.filename.lower().endswith(('.mp3', '.wav', '.flac')):
+        raise HTTPException(400, detail="Unsupported audio format. Use MP3, WAV, or FLAC.")
     
-    if not release:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Release not found or access denied"
-        )
+    if audio_file.size > 100 * 1024 * 1024:  # 100MB limit
+        raise HTTPException(400, detail="File too large. Maximum 100MB.")
+    
+    # Zapisz plik audio
+    file_path = UPLOAD_DIR / f"{current_user.id}_{audio_file.filename}"
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(audio_file.file, buffer)
+    
+    # Stwórz release w bazie
+    release_data = schemas.MusicReleaseCreate(
+        title=title,
+        artist=artist,
+        status="uploaded",
+        release_meta={
+            "genre": genre,
+            "file_path": str(file_path),
+            "file_size": audio_file.size,
+            "original_filename": audio_file.filename
+        }
+    )
+    
+    release = crud.create_music_release(db, release_data, current_user.id)
     return release
 
-@router.put("/{release_id}", response_model=schemas.MusicRelease)
+@router.get("/releases/{release_id}", response_model=schemas.MusicRelease)
+def get_release(
+    release_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Pobiera konkretne wydanie muzyczne."""
+    release = crud.get_music_release_by_id(db, release_id, current_user.id)
+    if not release:
+        raise HTTPException(404, detail="Release not found")
+    return release
+
+@router.put("/releases/{release_id}", response_model=schemas.MusicRelease)
 def update_release(
     release_id: int,
     release_update: schemas.MusicReleaseCreate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    """
-    Aktualizuje istniejące wydanie muzyczne.
-    """
-    # Sprawdź czy wydanie istnieje i należy do użytkownika
-    db_release = db.query(models.MusicRelease).filter(
-        models.MusicRelease.id == release_id,
-        models.MusicRelease.owner_id == current_user.id
-    ).first()
-    
-    if not db_release:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Release not found"
-        )
-    
-    # Aktualizuj pola
-    for field, value in release_update.model_dump(exclude_unset=True).items():
-        setattr(db_release, field, value)
-    
-    db.commit()
-    db.refresh(db_release)
-    return db_release
+    """Aktualizuje istniejące wydanie muzyczne."""
+    release = crud.update_music_release(db, release_id, current_user.id, release_update)
+    if not release:
+        raise HTTPException(404, detail="Release not found")
+    return release
 
-@router.delete("/{release_id}")
+@router.delete("/releases/{release_id}")
 def delete_release(
     release_id: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    """
-    Usuwa wydanie muzyczne.
-    """
-    release = db.query(models.MusicRelease).filter(
-        models.MusicRelease.id == release_id,
-        models.MusicRelease.owner_id == current_user.id
-    ).first()
-    
-    if not release:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Release not found"
-        )
-    
-    db.delete(release)
-    db.commit()
+    """Usuwa wydanie muzyczne."""
+    success = crud.delete_music_release(db, release_id, current_user.id)
+    if not success:
+        raise HTTPException(404, detail="Release not found")
     return {"message": "Release deleted successfully"}
 
-@router.get("/health")
-def health_check():
-    """
-    Sprawdza czy serwis muzyczny działa poprawnie.
-    """
-    return {"status": "Music Service is running!", "service": "music_app"}
-
-# Dodaj router do głównej aplikacji
-app.include_router(router)
-
-# Endpoint główny dla serwisu
-@app.get("/")
-def read_root():
+@router.post("/releases/{release_id}/distribute")
+def distribute_release(
+    release_id: int,
+    platforms: List[str],
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Dystrybuuje wydanie do wybranych platform (Spotify, Apple Music, etc.)."""
+    release = crud.get_music_release_by_id(db, release_id, current_user.id)
+    if not release:
+        raise HTTPException(404, detail="Release not found")
+    
+    # TODO: Integracja z RouteNote API
+    # Na razie symulujemy proces dystrybucji
+    
+    # Aktualizuj status
+    release.status = "distributing"
+    if not release.release_meta:
+        release.release_meta = {}
+    release.release_meta["distribution_platforms"] = platforms
+    release.release_meta["distribution_started"] = "2025-01-01"  # datetime.now().isoformat()
+    
+    db.commit()
+    
     return {
-        "message": "HardbanRecords Music Service", 
-        "version": "1.0.0",
-        "docs": "/docs"
+        "message": "Distribution started",
+        "release_id": release_id,
+        "platforms": platforms,
+        "status": "distributing"
+    }
+
+@router.get("/stats")
+def get_stats(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Zwraca statystyki użytkownika."""
+    total_releases = crud.count_user_releases(db, current_user.id)
+    published_releases = len(crud.get_releases_by_status(db, current_user.id, "published"))
+    
+    return {
+        "total_releases": total_releases,
+        "published_releases": published_releases,
+        "draft_releases": total_releases - published_releases,
+        "user_id": current_user.id
     }
