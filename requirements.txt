@@ -16,3 +16,5 @@ python-magic==0.4.27 # Walidacja plików
 Pillow==10.1.0 # Obrazy (okładki)
 celery==5.3.4 # Zadania w tle
 redis==5.0.1 # Cache i Celery broker
+selenium==4.22.0
+webdriver-manager==4.0.1
