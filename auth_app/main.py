@@ -5,14 +5,9 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from common import models
-# ZMIANA: Importujemy get_db z jednego, centralnego miejsca
-from common.database import engine, Base, get_db 
+from common.database import get_db 
 from . import crud, schemas
 
-# ZMIANA: Tworzenie tabel przeniesione do głównego pliku main.py, aby uniknąć wielokrotnego wywoływania
-# Base.metadata.create_all(bind=engine)
-
-# ZMIANA: Usunięto niepotrzebną instancję app = FastAPI()
 router = APIRouter()
 
 @router.post("/register", response_model=schemas.UserOut, tags=["Authentication"])
@@ -34,10 +29,16 @@ def login_for_access_token(
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
     access_token_expires = timedelta(minutes=crud.settings.access_token_expire_minutes)
+    
+    # --- ZMIANA W TEJ LINII ---
+    # Dodajemy 'role': user.role do danych w tokenie
     access_token = crud.create_access_token(
         data={"sub": user.email, "role": user.role}, expires_delta=access_token_expires
     )
+    # --- KONIEC ZMIANY ---
+    
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/users/me", response_model=schemas.UserOut, tags=["Users"])
@@ -47,7 +48,3 @@ def read_users_me(current_user: models.User = Depends(crud.get_current_user)):
     Wymaga ważnego tokena JWT.
     """
     return current_user
-
-@router.get("/docs", include_in_schema=False)
-def get_auth_docs():
-    return {"message": "To see docs, go to the main /docs endpoint"}
