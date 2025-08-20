@@ -1,4 +1,4 @@
-# Pełna zawartość do wklejenia do pliku: alembic/env.py
+# Pełna, POPRAWIONA zawartość pliku: alembic/env.py
 
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config
@@ -29,11 +29,15 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 def run_migrations_online() -> None:
+    # --- POCZĄTEK POPRAWKI ---
+    # Ta sekcja została zmieniona, aby użyć 'config_ini_section'
     connectable = engine_from_config(
-        config.get_section(config.config_main_section, {}),
+        config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
+    # --- KONIEC POPRAWKI ---
+
     with connectable.connect() as connection:
         context.configure(
             connection=connection, target_metadata=target_metadata
