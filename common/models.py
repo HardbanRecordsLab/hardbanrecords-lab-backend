@@ -1,29 +1,29 @@
-# common/models.py
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON
+# Pełna zawartość do wklejenia do pliku: common/models.py
+
+from sqlalchemy import Column, Integer, String, Enum as SQLAlchemyEnum, ForeignKey
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 from .database import Base
+import enum
+
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
+    MUSIC_CREATOR = "music_creator"
+    BOOK_AUTHOR = "book_author"
+    ELEARNING_INSTRUCTOR = "e-learning_instructor"
 
 class User(Base):
-    __tablename__ = "users"
+    __tablename__ = 'users'
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    role = Column(String, default="book_author", nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    music_releases = relationship("MusicRelease", back_populates="owner")
+    role = Column(SQLAlchemyEnum(UserRole), nullable=False)
+    releases = relationship("Release", back_populates="owner")
 
-class MusicRelease(Base):
-    __tablename__ = "music_releases"
+class Release(Base):
+    __tablename__ = 'releases'
     id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, index=True, nullable=False)
-    artist = Column(String, index=True, nullable=False)
-    
-    # ZMIANA: Zmieniamy nazwę z 'metadata' na 'release_meta'
-    release_meta = Column(JSON)
-    
-    s3_audio_key = Column(String)
-    s3_cover_art_key = Column(String)
-    status = Column(String, default="draft")
-    owner_id = Column(Integer, ForeignKey("users.id"))
-    owner = relationship("User", back_populates="music_releases")
+    title = Column(String, index=True)
+    artist = Column(String, index=True)
+    audio_file_path = Column(String, nullable=True)
+    owner_id = Column(Integer, ForeignKey('users.id'))
+    owner = relationship("User", back_populates="releases")
