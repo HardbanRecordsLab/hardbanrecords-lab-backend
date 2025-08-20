@@ -1,20 +1,19 @@
 fastapi==0.111.0
 uvicorn[standard]==0.30.1
-SQLAlchemy==2.0.42
-psycopg2-binary==2.9.10
-pydantic-settings==2.10.1
-pydantic[email]==2.11.7
+SQLAlchemy==2.0.31
+psycopg2-binary==2.9.9
+pydantic-settings==2.3.4
+pydantic[email]==2.8.2
 python-jose[cryptography]==3.3.0
-passlib==1.7.4
-bcrypt==4.0.1
-httpx==0.24.1
-boto3==1.34.0 # AWS S3 dla uploadów
-python-multipart==0.0.6 # Upload plików
-spotipy==2.22.1 # Spotify API
-pandas==2.1.4 # Analytics
-python-magic==0.4.27 # Walidacja plików
-Pillow==10.1.0 # Obrazy (okładki)
-celery==5.3.4 # Zadania w tle
-redis==5.0.1 # Cache i Celery broker
+passlib[bcrypt]==1.7.4
+httpx==0.27.0
+boto3==1.34.140
+python-multipart==0.0.9
+spotipy==2.27.0
+pandas==2.2.2 # Zaktualizowana wersja
+python-magic==0.4.27
+Pillow==10.4.0
+celery==5.4.0
+redis==5.0.7
 selenium==4.22.0
 webdriver-manager==4.0.1
