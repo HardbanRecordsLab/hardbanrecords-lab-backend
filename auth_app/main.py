@@ -1,24 +1,19 @@
-# auth_app/main.py
+# auth_app/main.py - Zaktualizowany
 from datetime import timedelta
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from common import models
-from common.database import SessionLocal, engine, settings, Base
+# ZMIANA: Importujemy get_db z jednego, centralnego miejsca
+from common.database import engine, Base, get_db 
 from . import crud, schemas
 
-Base.metadata.create_all(bind=engine)
+# ZMIANA: Tworzenie tabel przeniesione do głównego pliku main.py, aby uniknąć wielokrotnego wywoływania
+# Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
+# ZMIANA: Usunięto niepotrzebną instancję app = FastAPI()
 router = APIRouter()
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @router.post("/register", response_model=schemas.UserOut, tags=["Authentication"])
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
@@ -29,7 +24,9 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     return created_user
 
 @router.post("/login", response_model=schemas.Token, tags=["Authentication"])
-def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
+):
     user = crud.get_user_by_email(db, email=form_data.username)
     if not user or not crud.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -37,13 +34,12 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token_expires = timedelta(minutes=crud.settings.access_token_expire_minutes)
     access_token = crud.create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
+        data={"sub": user.email, "role": user.role}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
-# --- NOWY, CHRONIONY ENDPOINT ---
 @router.get("/users/me", response_model=schemas.UserOut, tags=["Users"])
 def read_users_me(current_user: models.User = Depends(crud.get_current_user)):
     """
@@ -51,10 +47,7 @@ def read_users_me(current_user: models.User = Depends(crud.get_current_user)):
     Wymaga ważnego tokena JWT.
     """
     return current_user
-# --- KONIEC NOWEGO ENDPOINTU ---
 
-@router.get("/", tags=["Status"])
-def read_root():
-    return {"message": "Auth Service is running!"}
-
-app.include_router(router)
+@router.get("/docs", include_in_schema=False)
+def get_auth_docs():
+    return {"message": "To see docs, go to the main /docs endpoint"}
