@@ -1,18 +1,16 @@
-# music_app/main.py - WERSJA ZINTEGROWANA Z CHMURĄ S3
+# music_app/main.py - WERSJA Z OBSŁUGĄ OKŁADEK
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
-# Importujemy nasz nowy handler S3
 from file_storage.s3_handler import S3Handler
-
 from common.database import SessionLocal
 from common import models
 from auth_app.crud import get_current_user
 from . import crud, schemas
 
 router = APIRouter()
-s3_handler = S3Handler() # Tworzymy instancję handlera
+s3_handler = S3Handler()
 
 def get_db():
     db = SessionLocal()
@@ -21,53 +19,54 @@ def get_db():
     finally:
         db.close()
 
-@router.get("/releases/", response_model=List[schemas.MusicRelease])
-def get_my_releases(
-    skip: int = 0,
-    limit: int = 100,
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Pobiera wszystkie wydania muzyczne aktualnego użytkownika."""
-    releases = crud.get_music_releases_by_owner(db, owner_id=current_user.id, skip=skip, limit=limit)
-    return releases
-
 @router.post("/releases/", response_model=schemas.MusicRelease)
 async def create_release(
     title: str = Form(...),
     artist: str = Form(...),
     genre: str = Form(default="Electronic"),
     audio_file: UploadFile = File(...),
+    cover_art_file: Optional[UploadFile] = File(None), # Nowy, opcjonalny parametr
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Tworzy nowe wydanie muzyczne, wysyłając plik audio do chmury S3."""
-    # Walidacja pliku audio
+    """Tworzy nowe wydanie, wysyłając plik audio i okładkę do chmury S3."""
+    # Walidacja audio
     if not audio_file.filename.lower().endswith(('.mp3', '.wav', '.flac')):
-        raise HTTPException(status_code=400, detail="Unsupported audio format. Use MP3, WAV, or FLAC.")
-    if audio_file.size > 100 * 1024 * 1024:  # 100MB limit
-        raise HTTPException(status_code=400, detail="File too large. Maximum 100MB.")
+        raise HTTPException(status_code=400, detail="Nieobsługiwany format audio.")
+    
+    # Walidacja okładki (jeśli została dodana)
+    if cover_art_file and not cover_art_file.content_type.startswith('image/'):
+         raise HTTPException(status_code=400, detail="Plik okładki musi być obrazem.")
 
-    # Najpierw tworzymy wpis w bazie, aby uzyskać release.id
+    # Tworzymy wstępny wpis w bazie, aby uzyskać release.id
     pre_release_data = schemas.MusicReleaseCreate(
         title=title, artist=artist, status="pending_upload", release_meta={"genre": genre}
     )
     release = crud.create_music_release(db=db, release=pre_release_data, owner_id=current_user.id)
     
-    # Teraz wysyłamy plik do chmury, używając ID z bazy danych
-    file_url = await s3_handler.upload_audio_file(
+    # Wysyłamy plik audio
+    audio_url = await s3_handler.upload_audio_file(
         file=audio_file, user_id=current_user.id, release_id=release.id
     )
-
-    if not file_url:
-        # Jeśli upload się nie udał, usuwamy wstępny wpis z bazy
+    if not audio_url:
         crud.delete_music_release(db, release_id=release.id, owner_id=current_user.id)
-        raise HTTPException(status_code=500, detail="Nie udało się wysłać pliku do chmury.")
+        raise HTTPException(status_code=500, detail="Nie udało się wysłać pliku audio.")
 
-    # Aktualizujemy wpis w bazie o URL pliku i zmieniamy status
+    # Wysyłamy okładkę, jeśli została dołączona
+    cover_art_url = None
+    if cover_art_file:
+        cover_art_url = await s3_handler.upload_cover_art(
+            file=cover_art_file, user_id=current_user.id, release_id=release.id
+        )
+        if not cover_art_url:
+            # W razie błędu okładki, kontynuujemy, ale logujemy błąd. Można też przerwać.
+            print(f"Ostrzeżenie: Nie udało się wysłać okładki dla wydania ID: {release.id}")
+
+    # Aktualizujemy wpis w bazie o wszystkie URL-e i zmieniamy status
     release.status = "uploaded"
     release.release_meta.update({
-        "file_url": file_url,
+        "audio_file_url": audio_url,
+        "cover_art_url": cover_art_url,
         "file_size": audio_file.size,
         "original_filename": audio_file.filename
     })
@@ -76,7 +75,11 @@ async def create_release(
     
     return release
 
-# ... (reszta endpointów: get_release, update_release, delete_release, get_stats - pozostaje bez zmian) ...
+# --- Pozostałe endpointy (GET, PUT, DELETE, STATS) bez zmian ---
+@router.get("/releases/", response_model=List[schemas.MusicRelease])
+def get_my_releases(skip: int = 0, limit: int = 100, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    releases = crud.get_music_releases_by_owner(db, owner_id=current_user.id, skip=skip, limit=limit)
+    return releases
 
 @router.get("/releases/{release_id}", response_model=schemas.MusicRelease)
 def get_release(release_id: int, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
