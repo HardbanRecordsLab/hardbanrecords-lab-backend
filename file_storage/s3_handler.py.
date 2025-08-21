@@ -1,0 +1,46 @@
+# file_storage/s3_handler.py - MODUŁ DO OBSŁUGI UPLOADU DO CHMURY S3
+import boto3
+from botocore.exceptions import ClientError
+from fastapi import UploadFile
+import os
+from typing import Optional
+
+class S3Handler:
+    def __init__(self):
+        # Inicjalizuje klienta S3, pobierając dane dostępowe ze zmiennych środowiskowych
+        self.s3_client = boto3.client(
+            's3',
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+            region_name=os.getenv('AWS_REGION', 'eu-central-1') # Domyślnie Frankfurt
+        )
+        self.bucket_name = os.getenv('S3_BUCKET_NAME')
+        if not self.bucket_name:
+            raise ValueError("S3_BUCKET_NAME nie jest ustawione w zmiennych środowiskowych")
+
+    async def upload_audio_file(self, file: UploadFile, user_id: int, release_id: int) -> Optional[str]:
+        """
+        Przesyła plik audio do chmury S3 i zwraca jego publiczny URL.
+        """
+        try:
+            # Generuje unikalną ścieżkę dla pliku w chmurze
+            file_extension = file.filename.split('.')[-1].lower()
+            s3_key = f"audio/{user_id}/{release_id}/track.{file_extension}"
+
+            # Wysyła plik do S3
+            self.s3_client.upload_fileobj(
+                file.file,
+                self.bucket_name,
+                s3_key,
+                ExtraArgs={
+                    'ContentType': file.content_type,
+                    'ServerSideEncryption': 'AES256'
+                }
+            )
+
+            # Zwraca publiczny URL do przesłanego pliku
+            file_url = f"https://{self.bucket_name}.s3.{os.getenv('AWS_REGION', 'eu-central-1')}.amazonaws.com/{s3_key}"
+            return file_url
+        except ClientError as e:
+            print(f"Błąd podczas wysyłania do S3: {e}")
+            return None
