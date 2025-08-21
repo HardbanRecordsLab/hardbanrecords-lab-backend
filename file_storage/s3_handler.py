@@ -2,7 +2,7 @@ import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
 from typing import Optional, BinaryIO
 import logging
-from core.config import settings
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -13,11 +13,11 @@ class S3Handler:
         try:
             self.s3_client = boto3.client(
                 's3',
-                aws_access_key_id=getattr(settings, 'AWS_ACCESS_KEY_ID', None),
-                aws_secret_access_key=getattr(settings, 'AWS_SECRET_ACCESS_KEY', None),
-                region_name=getattr(settings, 'AWS_REGION', 'us-east-1')
+                aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+                region_name=os.getenv('AWS_REGION', 'us-east-1')
             )
-            self.bucket_name = getattr(settings, 'AWS_BUCKET_NAME', None)
+            self.bucket_name = os.getenv('AWS_BUCKET_NAME')
         except Exception as e:
             logger.error(f"Failed to initialize S3 client: {e}")
             self.s3_client = None
