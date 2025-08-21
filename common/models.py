@@ -1,46 +1,29 @@
-# common/models.py - POPRAWIONA WERSJA
-
-from sqlalchemy import Column, Integer, String, Enum as SQLAlchemyEnum, ForeignKey, JSON, Text
+# common/models.py - WERSJA Z MODELEM ROYALTY SPLITS
+from sqlalchemy import Column, Integer, String, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from .database import Base
-import enum
-
-class UserRole(str, enum.Enum):
-    ADMIN = "admin"
-    MUSIC_CREATOR = "music_creator"
-    BOOK_AUTHOR = "book_author"
-    ELEARNING_INSTRUCTOR = "e-learning_instructor"
 
 class User(Base):
-    __tablename__ = 'users'
-    
+    __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    role = Column(SQLAlchemyEnum(UserRole), nullable=False, default=UserRole.MUSIC_CREATOR)
-    
-    # Relacje
+    role = Column(String, default="music_creator")
     releases = relationship("MusicRelease", back_populates="owner")
 
 class MusicRelease(Base):
-    __tablename__ = 'releases'
-    
+    __tablename__ = "music_releases"
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, index=True, nullable=False)
     artist = Column(String, index=True, nullable=False)
-    status = Column(String, default="draft", nullable=False)
+    status = Column(String, default="draft")
     
-    # DODANE: Pole dla ścieżki do pliku audio
-    audio_file_path = Column(String, nullable=True)
+    # Przechowuje dodatkowe dane, jak URL-e, gatunek, etc.
+    release_meta = Column(JSON) 
     
-    # Metadane jako JSON
-    release_meta = Column(JSON, nullable=True)
-    
-    # Klucz obcy do User
-    owner_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    
-    # Relacja do User
-    owner = relationship("User", back_populates="releases")
+    # NOWE POLE: Przechowuje informacje o podziale tantiem
+    # Przykład: [{"email": "wspoltworca@example.com", "share": 50}, {"email": "drugi@example.com", "share": 50}]
+    royalty_splits = Column(JSON) 
 
-# Alias dla kompatybilności wstecznej
-Release = MusicRelease
+    owner_id = Column(Integer, ForeignKey("users.id"))
+    owner = relationship("User", back_populates="releases")
