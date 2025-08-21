@@ -1,4 +1,4 @@
-# music_app/crud.py
+# music_app/crud.py - POPRAWIONA WERSJA
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from common import models
@@ -45,6 +45,7 @@ def create_music_release(db: Session, release: schemas.MusicReleaseCreate, owner
         artist=release_data["artist"],
         status=release_data.get("status", "draft"),
         release_meta=release_data.get("release_meta"),
+        audio_file_path=release_data.get("audio_file_path"),  # DODANE
         owner_id=owner_id
     )
     
@@ -53,7 +54,7 @@ def create_music_release(db: Session, release: schemas.MusicReleaseCreate, owner
     db.refresh(db_release)
     return db_release
 
-def update_music_release(db: Session, release_id: int, owner_id: int, release_update: schemas.MusicReleaseCreate) -> Optional[models.MusicRelease]:
+def update_music_release(db: Session, release_id: int, owner_id: int, release_update: schemas.MusicReleaseUpdate) -> Optional[models.MusicRelease]:
     """
     Aktualizuje istniejące wydanie muzyczne.
     """
