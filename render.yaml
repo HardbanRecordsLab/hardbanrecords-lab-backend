@@ -1,32 +1,18 @@
-# render.yaml - KONFIGURACJA RENDER.COM
+# render.yaml - BEZPIECZNA WERSJA (bez sekretów)
 services:
-  # Backend API
   - type: web
     name: hardbanrecords-api
     env: python
-    region: frankfurt  # Najbliżej Polski
-    plan: free  # Darmowy plan na start
+    region: frankfurt
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: hardbanrecords-db
-          property: connectionString
-      - key: SECRET_KEY
+      - key: SECRET_KEY  
         generateValue: true
       - key: ALGORITHM
         value: HS256
-      - key: ACCESS_TOKEN_EXPIRE_MINUTES  
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: 30
-      - key: GROQ_API_KEY
-        value: your-groq-api-key-here
-
-# Baza danych PostgreSQL
-databases:
-  - name: hardbanrecords-db
-    databaseName: hardbanrecords
-    user: hardban_user
-    region: frankfurt
-    plan: free  # 1GB free tier
+      # DATABASE_URL i GROQ_API_KEY będą skonfigurowane ręcznie w Render dashboard
