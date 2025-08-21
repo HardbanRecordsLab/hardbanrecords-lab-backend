@@ -1,4 +1,4 @@
-# music_app/schemas.py - WERSJA ZE SCHEMATAMI ROYALTY SPLITS
+# music_app/schemas.py - KOMPLETNA POPRAWIONA WERSJA
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Any
 
@@ -19,10 +19,23 @@ class MusicReleaseBase(BaseModel):
 class MusicReleaseCreate(MusicReleaseBase):
     pass
 
+# DODANA BRAKUJĄCA KLASA - Schemat używany przy aktualizacji wydania
+class MusicReleaseUpdate(BaseModel):
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    status: Optional[str] = None
+    release_meta: Optional[dict] = None
+    royalty_splits: Optional[List[RoyaltySplit]] = None
+    audio_file_path: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
 # Schemat używany przy zwracaniu danych z API (zawiera ID)
 class MusicRelease(MusicReleaseBase):
     id: int
     owner_id: int
+    audio_file_path: Optional[str] = None
 
     class Config:
         from_attributes = True # Zmieniono z `orm_mode` na `from_attributes` dla Pydantic v2

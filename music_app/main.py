@@ -1,4 +1,4 @@
-# music_app/main.py - WERSJA Z OBSŁUGĄ OKŁADEK
+# music_app/main.py - POPRAWIONA WERSJA Z WŁAŚCIWYMI SCHEMATAMI
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -75,35 +75,61 @@ async def create_release(
     
     return release
 
-# --- Pozostałe endpointy (GET, PUT, DELETE, STATS) bez zmian ---
 @router.get("/releases/", response_model=List[schemas.MusicRelease])
-def get_my_releases(skip: int = 0, limit: int = 100, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_my_releases(
+    skip: int = 0, 
+    limit: int = 100, 
+    current_user: models.User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
     releases = crud.get_music_releases_by_owner(db, owner_id=current_user.id, skip=skip, limit=limit)
     return releases
 
 @router.get("/releases/{release_id}", response_model=schemas.MusicRelease)
-def get_release(release_id: int, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_release(
+    release_id: int, 
+    current_user: models.User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
     release = crud.get_music_release_by_id(db, release_id=release_id, owner_id=current_user.id)
     if not release:
         raise HTTPException(status_code=404, detail="Release not found")
     return release
 
+# POPRAWIONO - używamy teraz MusicReleaseUpdate zamiast MusicReleaseCreate
 @router.put("/releases/{release_id}", response_model=schemas.MusicRelease)
-def update_release(release_id: int, release_update: schemas.MusicReleaseCreate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+def update_release(
+    release_id: int, 
+    release_update: schemas.MusicReleaseUpdate,  # ZMIENIONO Z MusicReleaseCreate
+    current_user: models.User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
     release = crud.update_music_release(db, release_id=release_id, owner_id=current_user.id, release_update=release_update)
     if not release:
         raise HTTPException(status_code=404, detail="Release not found")
     return release
 
 @router.delete("/releases/{release_id}")
-def delete_release(release_id: int, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+def delete_release(
+    release_id: int, 
+    current_user: models.User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
     success = crud.delete_music_release(db, release_id=release_id, owner_id=current_user.id)
     if not success:
         raise HTTPException(status_code=404, detail="Release not found")
     return {"message": "Release deleted successfully"}
 
 @router.get("/stats")
-def get_stats(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_stats(
+    current_user: models.User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
     total_releases = crud.count_user_releases(db, owner_id=current_user.id)
     published_releases = len(crud.get_releases_by_status(db, owner_id=current_user.id, status="published"))
-    return {"total_releases": total_releases, "published_releases": published_releases, "draft_releases": total_releases - published_releases, "user_id": current_user.id}
+    return {
+        "total_releases": total_releases, 
+        "published_releases": published_releases, 
+        "draft_releases": total_releases - published_releases, 
+        "user_id": current_user.id
+    }
