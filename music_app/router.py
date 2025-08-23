@@ -1,96 +1,76 @@
-# Pełny, samowystarczalny kod do umieszczenia w routerze modułu muzycznego
-import os
-import shutil
 from fastapi import APIRouter, Depends, HTTPException, status, Form, UploadFile
 from sqlalchemy.orm import Session
 from typing import List
 
-# Założenie, że masz takie pliki i strukturę. Dostosuj importy do swojego projektu.
-from ..database import get_db
-from . import schemas, models
-from ..auth_app import oauth2
+# Importujemy naszą klasę S3Handler
+from file_storage.s3_handler import S3Handler
 
-# Definicja ścieżki do folderu, gdzie będą przechowywane pliki
-UPLOAD_DIRECTORY = "uploads"
+# Importy specyficzne dla Twojej aplikacji
+from common.database import get_db
+from . import crud, schemas
+from auth_app.main import get_current_user_id
 
-# Inicjalizacja routera API
 router = APIRouter(
-    prefix="/music/releases",
+    prefix="/releases", # Zgodnie z Twoją strukturą, prefix jest w `main.py`
     tags=["Music Releases"]
 )
 
-# === NOWY ENDPOINT DO TWORZENIA WYDANIA ===
+# Inicjalizujemy handler S3 raz, aby można go było używać w całym module
+s3_handler = S3Handler()
 
-@router.post("/", status_code=status.HTTP_201_CREATED, response_model=schemas.ReleaseOut)
+@router.post("/", response_model=schemas.MusicRelease, status_code=status.HTTP_201_CREATED)
 def create_release(
+    db: Session = Depends(get_db),
     title: str = Form(...),
     artist: str = Form(...),
     cover_image: UploadFile = Form(...),
     audio_file: UploadFile = Form(...),
-    db: Session = Depends(get_db),
-    # Zabezpieczenie: Wymaga, aby użytkownik był zalogowany.
-    # Pobiera ID użytkownika z tokenu JWT.
-    current_user_id: int = Depends(oauth2.get_current_user_id)
+    current_user_id: int = Depends(get_current_user_id)
 ):
     """
-    Endpoint do tworzenia nowego wydania muzycznego.
-
-    Przyjmuje dane formularza multipart/form-data, w tym pliki.
-    1. Tworzy folder `uploads`, jeśli nie istnieje.
-    2. Zapisuje plik okładki i plik audio na serwerze.
-    3. Tworzy nowy rekord w bazie danych.
-    4. Zwraca utworzony obiekt wydania.
+    Tworzy nowe wydanie muzyczne, przesyłając pliki bezpośrednio do AWS S3.
     """
-    # Krok 1: Walidacja i przygotowanie ścieżek do zapisu plików
-    os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
+    # Krok 1: Prześlij pliki do S3 używając naszego handlera
+    cover_image_url = s3_handler.upload_file(
+        file_obj=cover_image.file,
+        folder="covers",
+        original_filename=cover_image.filename
+    )
+    audio_file_url = s3_handler.upload_file(
+        file_obj=audio_file.file,
+        folder="audio",
+        original_filename=audio_file.filename
+    )
 
-    cover_image_path = os.path.join(UPLOAD_DIRECTORY, cover_image.filename)
-    audio_file_path = os.path.join(UPLOAD_DIRECTORY, audio_file.filename)
-
-    # Krok 2: Zapisanie plików na dysku serwera
-    try:
-        with open(cover_image_path, "wb") as buffer:
-            shutil.copyfileobj(cover_image.file, buffer)
-        with open(audio_file_path, "wb") as buffer:
-            shutil.copyfileobj(audio_file.file, buffer)
-    except Exception as e:
-        # W przypadku błędu zapisu, zgłoś wyjątek
+    # Sprawdzenie, czy przesyłanie się powiodło
+    if not cover_image_url or not audio_file_url:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Nie udało się zapisać plików na serwerze: {e}"
+            detail="Nie udało się przesłać jednego z plików do chmury."
         )
-    finally:
-        # Zawsze zamykaj pliki po operacji
-        cover_image.file.close()
-        audio_file.file.close()
 
-    # Krok 3: Stworzenie nowego obiektu w bazie danych
-    # Zakładamy, że model `Release` ma pole `owner_id` do powiązania z użytkownikiem.
-    new_release_data = {
-        "title": title,
-        "artist": artist,
-        "cover_image_url": cover_image_path, # Zapisujemy ścieżkę do pliku
-        "audio_file_url": audio_file_path,   # Zapisujemy ścieżkę do pliku
-        "owner_id": current_user_id
-    }
-    new_release = models.Release(**new_release_data)
-
-    db.add(new_release)
-    db.commit()
-    db.refresh(new_release)
-
-    # Krok 4: Zwrócenie utworzonego obiektu
-    return new_release
+    # Krok 2: Przygotuj dane do zapisu w bazie
+    release_data = schemas.MusicReleaseCreate(
+        title=title,
+        artist=artist,
+        cover_image_url=cover_image_url,
+        audio_file_url=audio_file_url,
+        owner_id=current_user_id
+    )
+    
+    # Krok 3: Zapisz wydanie w bazie danych
+    return crud.create_music_release(db=db, release=release_data)
 
 
-# Przykładowy, istniejący endpoint do pobierania listy wydań (dla kontekstu)
-@router.get("/", response_model=List[schemas.ReleaseOut])
-def get_releases(
+@router.get("/", response_model=List[schemas.MusicRelease])
+def read_releases(
     db: Session = Depends(get_db),
-    current_user_id: int = Depends(oauth2.get_current_user_id)
+    skip: int = 0,
+    limit: int = 100,
+    current_user_id: int = Depends(get_current_user_id)
 ):
     """
-    Endpoint do pobierania listy wydawnictw należących do zalogowanego użytkownika.
+    Pobiera listę wydawnictw dla zalogowanego użytkownika.
     """
-    releases = db.query(models.Release).filter(models.Release.owner_id == current_user_id).all()
+    releases = crud.get_music_releases_by_owner(db, owner_id=current_user_id, skip=skip, limit=limit)
     return releases
