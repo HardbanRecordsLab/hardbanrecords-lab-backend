@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from common import models
 from common.database import get_db 
 from . import crud, schemas
+# Importujemy zależność z nowego pliku deps.py
+from .deps import get_current_user
 
 router = APIRouter()
 
@@ -32,17 +34,14 @@ def login_for_access_token(
     
     access_token_expires = timedelta(minutes=crud.settings.access_token_expire_minutes)
     
-    # --- ZMIANA W TEJ LINII ---
-    # Dodajemy 'role': user.role do danych w tokenie
     access_token = crud.create_access_token(
         data={"sub": user.email, "role": user.role}, expires_delta=access_token_expires
     )
-    # --- KONIEC ZMIANY ---
     
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/users/me", response_model=schemas.UserOut, tags=["Users"])
-def read_users_me(current_user: models.User = Depends(crud.get_current_user)):
+def read_users_me(current_user: models.User = Depends(get_current_user)):
     """
     Pobiera dane o aktualnie zalogowanym użytkowniku.
     Wymaga ważnego tokena JWT.
