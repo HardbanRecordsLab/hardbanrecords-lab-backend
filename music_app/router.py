@@ -1,74 +1,72 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Form, UploadFile
+# music_app/router.py
+
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Annotated
 
-# Importujemy naszą klasę S3Handler
-from file_storage.s3_handler import S3Handler
+from .. import database
+from . import schemas, crud, models
+from ..auth_app.oauth2 import get_current_user_id # Założenie: funkcja do pobierania ID usera
+from ..file_storage.s3_handler import s3_upload # Założenie: funkcja do uploadu na S3
 
-# Importy specyficzne dla Twojej aplikacji
-from common.database import get_db
-from . import crud, schemas
-# --- POPRAWIONY IMPORT ---
-# Importujemy zależność z nowego, dedykowanego pliku auth_app/deps.py
-from auth_app.deps import get_current_user_id
-# -------------------------
-
+# Inicjalizacja routera dla modułu muzycznego.
 router = APIRouter(
-    prefix="/releases",
+    prefix="/music",
     tags=["Music Releases"]
 )
 
-s3_handler = S3Handler()
-
-@router.post("/", response_model=schemas.MusicRelease, status_code=status.HTTP_201_CREATED)
-def create_release(
-    db: Session = Depends(get_db),
-    title: str = Form(...),
-    artist: str = Form(...),
-    cover_image: UploadFile = Form(...),
-    audio_file: UploadFile = Form(...),
-    current_user_id: int = Depends(get_current_user_id) # Ta zależność teraz zadziała
+@router.post("/releases/", response_model=schemas.MusicReleaseOut, status_code=status.HTTP_201_CREATED)
+def create_new_release(
+    title: Annotated[str, Form()],
+    artist: Annotated[str, Form()],
+    cover_image: Annotated[UploadFile, File()],
+    audio_file: Annotated[UploadFile, File()],
+    db: Session = Depends(database.get_db),
+    current_user_id: int = Depends(get_current_user_id)
 ):
-    """
-    Tworzy nowe wydanie muzyczne, przesyłając pliki bezpośrednio do AWS S3.
-    """
-    cover_image_url = s3_handler.upload_file(
-        file_obj=cover_image.file,
-        folder="covers",
-        original_filename=cover_image.filename
-    )
-    audio_file_url = s3_handler.upload_file(
-        file_obj=audio_file.file,
-        folder="audio",
-        original_filename=audio_file.filename
-    )
+    """Endpoint do tworzenia nowego wydawnictwa muzycznego z plikami."""
+    # Przesyłanie plików na S3
+    cover_url = s3_upload(cover_image, "covers")
+    audio_url = s3_upload(audio_file, "audio")
 
-    if not cover_image_url or not audio_file_url:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Nie udało się przesłać jednego z plików do chmury."
-        )
-
-    release_data = schemas.MusicReleaseCreate(
+    # Zapis metadanych w bazie danych
+    return crud.create_music_release(
+        db=db,
         title=title,
         artist=artist,
-        cover_image_url=cover_image_url,
-        audio_file_url=audio_file_url,
+        cover_url=cover_url,
+        audio_url=audio_url,
         owner_id=current_user_id
     )
-    
-    return crud.create_music_release(db=db, release=release_data)
 
+@router.get("/releases/", response_model=List[schemas.MusicReleaseOut])
+def get_user_releases(
+    db: Session = Depends(database.get_db),
+    current_user_id: int = Depends(get_current_user_id)
+):
+    """Pobiera listę wszystkich wydawnictw należących do zalogowanego użytkownika."""
+    return crud.get_music_releases_by_owner(db, owner_id=current_user_id)
 
-@router.get("/", response_model=List[schemas.MusicRelease])
-def read_releases(
-    db: Session = Depends(get_db),
-    skip: int = 0,
-    limit: int = 100,
+# NOWY ENDPOINT DO ZARZĄDZANIA ROYALTY SPLITS
+@router.post("/releases/{release_id}/royalty-splits", response_model=schemas.RoyaltySplitOut, status_code=status.HTTP_201_CREATED)
+def add_royalty_split_to_release(
+    release_id: int,
+    split_data: schemas.RoyaltySplitCreate,
+    db: Session = Depends(database.get_db),
     current_user_id: int = Depends(get_current_user_id)
 ):
     """
-    Pobiera listę wydawnictw dla zalogowanego użytkownika.
+    Endpoint API do dodawania nowego podziału tantiem do istniejącego wydawnictwa.
+
+    - Wymaga uwierzytelnienia (przez `get_current_user_id`).
+    - Przyjmuje ID wydawnictwa w ścieżce URL.
+    - Przyjmuje dane podziału (email, procent) w ciele żądania.
+    - Wywołuje funkcję z warstwy CRUD, która zawiera całą logikę walidacyjną.
+    [cite_start][cite: 215-221]
     """
-    releases = crud.get_music_releases_by_owner(db, owner_id=current_user_id, skip=skip, limit=limit)
-    return releases
+    return crud.create_royalty_split_for_release(
+        db=db,
+        split_data=split_data,
+        release_id=release_id,
+        owner_id=current_user_id
+    )

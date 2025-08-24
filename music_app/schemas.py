@@ -1,41 +1,54 @@
-# music_app/schemas.py - KOMPLETNA POPRAWIONA WERSJA
-from pydantic import BaseModel, EmailStr
-from typing import List, Optional, Any
+# music_app/schemas.py
 
-# Nowy schemat definiujący pojedynczy wpis podziału tantiem
-class RoyaltySplit(BaseModel):
+from pydantic import BaseModel, Field, EmailStr
+from typing import List, Optional
+from datetime import datetime
+
+# --- NOWE SCHEMATY DLA ROYALTY SPLITS ---
+
+class RoyaltySplitBase(BaseModel):
+    """Podstawowy schemat dla podziału tantiem."""
     email: EmailStr
-    share: int # Procent, np. 50
+    # Definiujemy walidację: udział musi być liczbą > 0 i <= 100.
+    share_percentage: float = Field(..., gt=0, le=100, description="Udział procentowy musi być większy od 0 i mniejszy lub równy 100.")
 
-# Schemat bazowy dla wydania muzycznego
-class MusicReleaseBase(BaseModel):
-    title: str
-    artist: str
-    status: Optional[str] = "draft"
-    release_meta: Optional[dict] = {}
-    royalty_splits: Optional[List[RoyaltySplit]] = [] # Dodajemy pole do schematu
-
-# Schemat używany przy tworzeniu nowego wydania
-class MusicReleaseCreate(MusicReleaseBase):
+class RoyaltySplitCreate(RoyaltySplitBase):
+    """Schemat używany do walidacji danych przychodzących przy tworzeniu nowego podziału."""
     pass
 
-# DODANA BRAKUJĄCA KLASA - Schemat używany przy aktualizacji wydania
-class MusicReleaseUpdate(BaseModel):
-    title: Optional[str] = None
-    artist: Optional[str] = None
-    status: Optional[str] = None
-    release_meta: Optional[dict] = None
-    royalty_splits: Optional[List[RoyaltySplit]] = None
-    audio_file_path: Optional[str] = None
-    
+class RoyaltySplitOut(RoyaltySplitBase):
+    """Schemat używany do zwracania danych o podziale tantiem z API. Zawiera dodatkowo ID."""
+    id: int
+
     class Config:
+        # Pozwala Pydantic na konwersję z modelu SQLAlchemy.
         from_attributes = True
 
-# Schemat używany przy zwracaniu danych z API (zawiera ID)
-class MusicRelease(MusicReleaseBase):
+# --- ZAKTUALIZOWANE SCHEMATY DLA MUSIC RELEASE ---
+
+class MusicReleaseBase(BaseModel):
+    """Podstawowy schemat dla wydawnictwa muzycznego."""
+    title: str
+    artist: str
+
+class MusicReleaseCreate(MusicReleaseBase):
+    """Schemat używany do tworzenia wydawnictwa (jeśli dane idą w ciele JSON)."""
+    pass
+
+class MusicReleaseOut(MusicReleaseBase):
+    """
+    Zaktualizowany schemat wyjściowy dla wydawnictwa.
+    Teraz zawiera również listę wszystkich przypisanych do niego podziałów tantiem.
+    """
     id: int
+    cover_image_url: str
+    audio_file_url: str
+    status: str
+    created_at: datetime
     owner_id: int
-    audio_file_path: Optional[str] = None
+    
+    # Dodane pole, które będzie zawierać listę obiektów RoyaltySplitOut.
+    royalty_splits: List[RoyaltySplitOut] = [] 
 
     class Config:
-        from_attributes = True # Zmieniono z `orm_mode` na `from_attributes` dla Pydantic v2
+        from_attributes = True
