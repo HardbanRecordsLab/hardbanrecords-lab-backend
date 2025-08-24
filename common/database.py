@@ -1,43 +1,36 @@
-# common/database.py - POPRAWIONA WERSJA
-import os
+# common/database.py
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.orm import sessionmaker
+import os
+from dotenv import load_dotenv
 
-class Settings(BaseSettings):
-    database_url: str  # REQUIRED - brak wartości domyślnej
-    secret_key: str = "your-secret-key-change-in-production"
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
-    groq_api_key: str = "gsk_default"
-    
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+# Wczytujemy zmienne środowiskowe z pliku .env
+load_dotenv()
 
-# Inicjalizacja settings z obsługą błędów
-try:
-    settings = Settings()
-    print(f"✅ Settings loaded successfully")
-    print(f"🗄️  Database URL configured: {settings.database_url[:20]}...")
-except Exception as e:
-    print(f"❌ Settings loading failed: {e}")
-    print("📋 Available environment variables:")
-    for key in os.environ:
-        if key.upper().startswith(('DATABASE', 'SECRET', 'GROQ')):
-            print(f"   {key}: {os.environ[key][:20]}...")
-    raise
+# Pobieramy URL bazy danych ze zmiennych środowiskowych
+# Upewnij się, że masz plik .env w głównym folderze backendu
+# z wpisem: DATABASE_URL="postgresql://user:password@host:port/dbname"
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Tworzenie engine z dodatkową diagnostyką
-try:
-    engine = create_engine(settings.database_url)
-    print("✅ Database engine created successfully")
-except Exception as e:
-    print(f"❌ Database engine creation failed: {e}")
-    raise
+if not SQLALCHEMY_DATABASE_URL:
+    raise ValueError("Nie zdefiniowano zmiennej środowiskowej DATABASE_URL")
 
+# Tworzymy silnik SQLAlchemy - główny punkt połączenia z bazą danych.
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+
+# Tworzymy klasę SessionLocal, która będzie fabryką sesji bazodanowych.
+# Każda instancja SessionLocal będzie osobną sesją.
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Tworzymy bazową klasę dla naszych modeli deklaratywnych.
+# Wszystkie nasze modele w bazie danych będą dziedziczyć z tej klasy.
 Base = declarative_base()
 
+# Funkcja zależności (dependency) dla FastAPI.
+# Ta funkcja będzie wywoływana dla każdego żądania API, które jej wymaga.
+# Otwiera nową sesję, udostępnia ją, a następnie zamyka po zakończeniu żądania.
 def get_db():
     db = SessionLocal()
     try:
